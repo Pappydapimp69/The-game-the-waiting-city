@@ -22,7 +22,7 @@ import { describeObjective } from '../src/app/objective-text.js';
 import { bfsNextStep, stepAwayFrom } from '../src/sim/pathfind.js';
 import { hasLineOfSight } from '../src/sim/visibility.js';
 
-const GOLDEN_DEMO_FINGERPRINT = '2055a006';
+const GOLDEN_DEMO_FINGERPRINT = 'd099c9ea';
 
 const failures = [];
 let count = 0;
@@ -174,13 +174,40 @@ test('bulwark-elite1/seal1 do not exist before the finale quest is accepted', ()
   assert(!fresh.enemies['bulwark-elite1'], 'gated enemy pre-spawned');
   assert(!fresh.pickups.seal1, 'gated pickup pre-spawned');
 });
+test('sentry1/cutthroat1/signet1 do not exist before their quests are accepted (fixed soft-lock)', () => {
+  const fresh = makeWorld(1);
+  assert(!fresh.enemies.sentry1, 'sentry1 pre-spawned — killable before read-the-city is accepted');
+  assert(!fresh.enemies.cutthroat1, 'cutthroat1 pre-spawned — killable before watch-them-move is accepted');
+  assert(!fresh.pickups.signet1, 'signet1 pre-spawned — collectable before ferros-ledger is accepted');
+});
+test('quest-unlocked enemies telegraph before appearing (pendingSpawns), not instant-spawn', () => {
+  const w = makeWorld(1);
+  talkAndAccept(w, 'ferro', 'city-of-rules');
+  moveAdjacent(w, { x: 20, y: 10 });
+  moveAdjacent(w, w.npcs.ferro);
+  reduce(w, { type: 'TALK', npcId: 'ferro' });
+  const ev = reduce(w, { type: 'ACCEPT_QUEST', questId: 'read-the-city' });
+  assert(!w.enemies.sentry1, 'sentry1 spawned instantly on ACCEPT_QUEST instead of telegraphing');
+  assert(w.pendingSpawns.some((p) => p.id === 'sentry1'), 'sentry1 not queued in pendingSpawns');
+  assert(ev.some((e) => e.type === 'enemy_incoming' && e.target === 'sentry1'), 'no enemy_incoming event fired');
+  let g = 0; while (!w.enemies.sentry1 && g++ < 10) reduce(w, { type: 'TICK' });
+  assert(w.enemies.sentry1 && w.enemies.sentry1.alive === 1, 'sentry1 never actually appeared after its delay');
+});
+
+// sentry1/cutthroat1/bulwark-elite1 are all quest-gated now (see the two
+// tests above) — don't exist off a bare makeWorld(). Immunity/AI unit tests
+// build a synthetic enemy of the kind under test instead, at an arbitrary
+// safe spot, so they stay independent of the quest-acceptance chain.
+function makeTestEnemy(w, id, kind, x, y) {
+  const k = CONTENT.enemyKinds[kind];
+  w.enemies[id] = { x, y, kind, hp: k.hp, maxHp: k.hp, power: k.power, alive: 1, immune: k.immune || '', aiState: 'patrol', homeX: x, homeY: y, stateTicks: 0 };
+  return w.enemies[id];
+}
 
 console.log('# immunity mechanics');
 test('Bulwark (immune: aura) shrugs off a blast, dies to fists', () => {
   const w = makeWorld(1);
-  // bulwark-elite1 is quest-gated (see test above); verify the immunity data
-  // path directly via a synthetic enemy of kind 'bulwark' at the player's door.
-  w.enemies.testbulwark = { x: w.player.x + 1, y: w.player.y, kind: 'bulwark', hp: 12, maxHp: 12, power: 2, alive: 1, immune: 'aura', aiState: 'patrol', homeX: w.player.x + 1, homeY: w.player.y, stateTicks: 0 };
+  makeTestEnemy(w, 'testbulwark', 'bulwark', w.player.x + 1, w.player.y);
   chargeTo(w, 3);
   const blast = reduce(w, { type: 'AURA_BLAST', enemyId: 'testbulwark' });
   assert(blast.some((e) => e.type === 'no_effect' && e.kind === 'aura'), 'aura should no_effect a bulwark');
@@ -190,61 +217,62 @@ test('Bulwark (immune: aura) shrugs off a blast, dies to fists', () => {
 });
 test('Cutthroat (immune: melee) shrugs off fists, dies to aura', () => {
   const w = makeWorld(1);
-  moveAdjacent(w, w.enemies.cutthroat1);
-  const melee = reduce(w, { type: 'MELEE', enemyId: 'cutthroat1' });
+  makeTestEnemy(w, 'testcutthroat', 'cutthroat', w.player.x + 1, w.player.y);
+  const melee = reduce(w, { type: 'MELEE', enemyId: 'testcutthroat' });
   assert(melee.some((e) => e.type === 'no_effect' && e.kind === 'melee'), 'melee should no_effect a cutthroat');
-  assert(w.enemies.cutthroat1.alive === 1, 'cutthroat died to an immune punch');
-  let g = 0; while (w.enemies.cutthroat1.alive && g++ < 30) { chargeTo(w, 3); reduce(w, { type: 'AURA_BLAST', enemyId: 'cutthroat1' }); }
-  assert(!w.enemies.cutthroat1.alive, 'cutthroat never died to aura');
+  assert(w.enemies.testcutthroat.alive === 1, 'cutthroat died to an immune punch');
+  let g = 0; while (w.enemies.testcutthroat.alive && g++ < 30) { chargeTo(w, 3); reduce(w, { type: 'AURA_BLAST', enemyId: 'testcutthroat' }); }
+  assert(!w.enemies.testcutthroat.alive, 'cutthroat never died to aura');
 });
 
 console.log('# deterministic enemy AI (the signature system)');
 test('a patrolling enemy switches to chase once the player enters its aggro radius', () => {
   const w = makeWorld(1);
-  const e = w.enemies.sentry1;
+  const e = makeTestEnemy(w, 'testsentry', 'sentry', 7, 4);
   assertEqual(e.aiState, 'patrol', 'sentry should start patrolling');
   w.player.x = e.x; w.player.y = e.y + 1; // Chebyshev distance 1, well within aggro 5
   reduce(w, { type: 'TICK' });
-  assertEqual(w.enemies.sentry1.aiState, 'chase', 'sentry did not notice an adjacent player');
+  assertEqual(w.enemies.testsentry.aiState, 'chase', 'sentry did not notice an adjacent player');
 });
 test('a far-away player leaves an enemy patrolling', () => {
   const w = makeWorld(1);
+  makeTestEnemy(w, 'testsentry', 'sentry', 7, 4);
+  makeTestEnemy(w, 'testcutthroat', 'cutthroat', 21, 15);
   reduce(w, { type: 'TICK' }); // player starts far from every enemy home
-  assertEqual(w.enemies.sentry1.aiState, 'patrol', 'sentry aggroed with no player nearby');
-  assertEqual(w.enemies.cutthroat1.aiState, 'patrol', 'cutthroat aggroed with no player nearby');
+  assertEqual(w.enemies.testsentry.aiState, 'patrol', 'sentry aggroed with no player nearby');
+  assertEqual(w.enemies.testcutthroat.aiState, 'patrol', 'cutthroat aggroed with no player nearby');
 });
 test('a chasing enemy takes a real step toward the player each tick', () => {
   const w = makeWorld(1);
-  const e = w.enemies.sentry1;
+  const e = makeTestEnemy(w, 'testsentry', 'sentry', 7, 4);
   w.player.x = e.x + 3; w.player.y = e.y; // within aggro(5), not adjacent
   const before = `${e.x},${e.y}`;
   reduce(w, { type: 'TICK' });
-  assertEqual(w.enemies.sentry1.aiState, 'chase', 'sentry did not enter chase');
-  assert(`${w.enemies.sentry1.x},${w.enemies.sentry1.y}` !== before, 'chasing sentry never moved');
+  assertEqual(w.enemies.testsentry.aiState, 'chase', 'sentry did not enter chase');
+  assert(`${w.enemies.testsentry.x},${w.enemies.testsentry.y}` !== before, 'chasing sentry never moved');
   const distBefore = 3;
-  const distAfter = Math.max(Math.abs(w.enemies.sentry1.x - w.player.x), Math.abs(w.enemies.sentry1.y - w.player.y));
+  const distAfter = Math.max(Math.abs(w.enemies.testsentry.x - w.player.x), Math.abs(w.enemies.testsentry.y - w.player.y));
   assert(distAfter < distBefore, 'chasing sentry did not close the distance');
 });
 test('a badly wounded Cutthroat flees instead of closing in', () => {
   const w = makeWorld(1);
-  const e = w.enemies.cutthroat1;
+  const e = makeTestEnemy(w, 'testcutthroat', 'cutthroat', 21, 15);
   e.hp = Math.floor(e.maxHp * 0.2); // 20% — below fleeAt(30)
   w.player.x = e.x + 1; w.player.y = e.y;
   const distBefore = 1;
   reduce(w, { type: 'TICK' });
-  assertEqual(w.enemies.cutthroat1.aiState, 'flee', 'badly wounded cutthroat did not flee');
-  const distAfter = Math.max(Math.abs(w.enemies.cutthroat1.x - w.player.x), Math.abs(w.enemies.cutthroat1.y - w.player.y));
+  assertEqual(w.enemies.testcutthroat.aiState, 'flee', 'badly wounded cutthroat did not flee');
+  const distAfter = Math.max(Math.abs(w.enemies.testcutthroat.x - w.player.x), Math.abs(w.enemies.testcutthroat.y - w.player.y));
   assert(distAfter >= distBefore, 'fleeing cutthroat moved toward the player instead of away');
 });
 test('a chasing enemy gives up and returns to post once it exceeds its leash', () => {
   const w = makeWorld(1);
-  const e = w.enemies.sentry1;
+  const e = makeTestEnemy(w, 'testsentry', 'sentry', 7, 4);
   e.aiState = 'chase';
-  e.x = e.homeX + 50 > w.region.w ? w.region.w - 1 : e.homeX; // keep in-bounds
   e.x = 30; e.y = 4; // far from home (7,4) and far from player
   w.player.x = 31; w.player.y = 4; // still "far" relative to leash(7) from home, close to enemy so it'd otherwise keep chasing
   reduce(w, { type: 'TICK' });
-  assertEqual(w.enemies.sentry1.aiState, 'return', 'sentry kept chasing past its leash');
+  assertEqual(w.enemies.testsentry.aiState, 'return', 'sentry kept chasing past its leash');
 });
 test('perception gates the AI-state readout at a higher threshold than hp/power', () => {
   const seeker = makeWorld(1, { archetype: 'seeker' }); // perception 2

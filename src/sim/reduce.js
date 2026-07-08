@@ -26,6 +26,13 @@ const MELEE_RANGE = 1;
 const BLAST_RANGE = 3;
 const BLAST_COST = 3;
 const XP_PER_LEVEL = 5;
+// Quest-unlocked enemies don't materialize the instant a quest is accepted —
+// they sit in state.pendingSpawns for a fixed number of ticks first (an
+// honest, sim-enforced telegraph: the entity genuinely isn't in state.enemies
+// yet, so it can't act or be struck, unlike a cosmetic fade-in that would
+// leave it fully live under a still-fading sprite). Fixed, not rng-drawn —
+// the point is predictable telegraphing, not unpredictability.
+const ENEMY_SPAWN_DELAY_TICKS = 3;
 
 const CHARGE_RAMP_STEP = 4;
 const CHARGE_RAMP_CAP = 8;
@@ -42,6 +49,22 @@ function reduceCore(state, command) {
     case 'TICK': {
       state.tick += 1;
       const events = [];
+      // Drain any enemy whose telegraph delay has elapsed BEFORE this tick's
+      // AI decisions run, so a freshly-materialized enemy doesn't act on its
+      // own spawn tick — one more free beat for the player. Fixed sorted-id
+      // order keeps this deterministic regardless of pendingSpawns' insertion
+      // order (which itself only ever depends on prior commands, not
+      // iteration happenstance, but sorting here costs nothing and removes
+      // any doubt).
+      const due = state.pendingSpawns.filter((p) => state.tick >= p.readyTick).sort((a, b) => (a.id < b.id ? -1 : 1));
+      for (const p of due) {
+        state.enemies[p.id] = { ...p.tmpl };
+        events.push({ type: 'enemy_appeared', target: p.id, kind: p.tmpl.kind });
+      }
+      if (due.length) {
+        const dueIds = new Set(due.map((p) => p.id));
+        state.pendingSpawns = state.pendingSpawns.filter((p) => !dueIds.has(p.id));
+      }
       // Fixed sorted-id order + a shared `claimed` occupancy snapshot is what
       // keeps same-tick multi-entity movement deterministic regardless of
       // iteration happenstance — see src/sim/ai.js header.
@@ -115,10 +138,16 @@ function reduceCore(state, command) {
       state.quests.active[q] = { progress: def.objectives.map(() => 0) };
       const events = [{ type: 'quest_accepted', quest: q }];
       if (def.unlocks) {
+        // Enemies telegraph, not instant-spawn: queued here, actually placed
+        // into state.enemies a few TICKs later (see the TICK case above) —
+        // an 'enemy_incoming' event fires now (nothing to inspect on it but
+        // kind/target yet, same tolerance the 'enemy_appeared' handler
+        // already has), and the real 'enemy_appeared' fires once it's live.
         for (const [id, tmpl] of Object.entries(def.unlocks.enemies || {})) {
-          state.enemies[id] = { ...tmpl };
-          events.push({ type: 'enemy_appeared', target: id, kind: tmpl.kind });
+          state.pendingSpawns.push({ id, tmpl, readyTick: state.tick + ENEMY_SPAWN_DELAY_TICKS });
+          events.push({ type: 'enemy_incoming', target: id, kind: tmpl.kind });
         }
+        // Pickups have no attackability stakes, so they stay instant.
         for (const [id, tmpl] of Object.entries(def.unlocks.pickups || {})) {
           state.pickups[id] = { ...tmpl };
           events.push({ type: 'pickup_appeared', target: id, item: tmpl.item });

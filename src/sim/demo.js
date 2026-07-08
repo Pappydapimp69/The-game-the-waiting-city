@@ -53,6 +53,9 @@ export function demoCommands() {
   walkTo(3, 10);
   cmds.push({ type: 'TALK', npcId: 'ferro' }); // offers 'read-the-city'
   cmds.push({ type: 'ACCEPT_QUEST', questId: 'read-the-city' });
+  // sentry1 telegraphs in over ENEMY_SPAWN_DELAY_TICKS (3) ticks — see
+  // reduce.js — before it actually exists to fight.
+  cmds.push({ type: 'TICK' }, { type: 'TICK' }, { type: 'TICK' });
   walkTo(7, 4);
   for (let i = 0; i < 5; i++) cmds.push({ type: 'MELEE', enemyId: 'sentry1' });
 
@@ -60,6 +63,7 @@ export function demoCommands() {
   walkTo(3, 10);
   cmds.push({ type: 'TALK', npcId: 'ferro' }); // offers 'watch-them-move'
   cmds.push({ type: 'ACCEPT_QUEST', questId: 'watch-them-move' });
+  cmds.push({ type: 'TICK' }, { type: 'TICK' }, { type: 'TICK' });
   walkTo(21, 15);
   cmds.push({ type: 'MELEE', enemyId: 'cutthroat1' }); // no_effect (immune: melee)
   charge(6);
@@ -80,6 +84,7 @@ export function demoCommands() {
   walkTo(3, 10);
   cmds.push({ type: 'TALK', npcId: 'ferro' }); // offers 'the-wardens-seal'
   cmds.push({ type: 'ACCEPT_QUEST', questId: 'the-wardens-seal' });
+  cmds.push({ type: 'TICK' }, { type: 'TICK' }, { type: 'TICK' });
 
   walkTo(21, 14);
   for (let i = 0; i < 5; i++) cmds.push({ type: 'MELEE', enemyId: 'bulwark-elite1' }); // immune: aura, melee works

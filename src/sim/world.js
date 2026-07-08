@@ -103,6 +103,11 @@ export function makeWorld(seed, options = {}) {
     },
     npcs,
     enemies,
+    // Quest-unlocked enemies queued to appear a few ticks after ACCEPT_QUEST
+    // (see reduce.js's ACCEPT_QUEST/TICK cases) — a sim-enforced spawn
+    // telegraph, not a cosmetic one: the entity genuinely isn't in `enemies`
+    // yet, so it can't act on or be struck by anything until it's due.
+    pendingSpawns: [],
     cars,
     destructibles,
     pickups,

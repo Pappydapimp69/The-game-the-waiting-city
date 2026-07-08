@@ -43,6 +43,42 @@ const BUILDING_COLORS = {
 };
 const BUILDING_FADE_ALPHA = 0.35;
 
+// Charge-only DBZ-style flame overlay (ported from Wrong Sky, where it
+// replaced an always-on aura ring). Full opacity while charging; on release
+// it fades over a duration set by game.js from the aura-% held at release
+// (below 80% -> 100ms; 80-100% -> scales 200ms to 500ms).
+function auraFlameAlpha(view, now) {
+  if (view.charging) return 1;
+  if (view.auraFadeActive) {
+    const elapsed = now - view.auraFadeStart;
+    if (elapsed < view.auraFadeDuration) return Math.max(0, 1 - elapsed / view.auraFadeDuration);
+  }
+  return 0;
+}
+function drawAuraFlame(ctx, cx, topY, alpha, now) {
+  const t = now * 0.006;
+  const flicker = Math.sin(t) * 2;
+  const flicker2 = Math.sin(t * 1.7 + 1) * 1.5;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createLinearGradient(0, topY, 0, topY - TILE * 0.9);
+  grad.addColorStop(0, 'rgba(126,200,255,0.9)');
+  grad.addColorStop(1, 'rgba(126,200,255,0)');
+  ctx.fillStyle = grad;
+  drawLick(ctx, cx - 4 + flicker * 0.4, topY, TILE * 0.22, TILE * 0.55);
+  drawLick(ctx, cx + flicker, topY, TILE * 0.28, TILE * 0.75);
+  drawLick(ctx, cx + 4 + flicker2 * 0.4, topY, TILE * 0.2, TILE * 0.5);
+  ctx.restore();
+}
+function drawLick(ctx, x, baseY, width, height) {
+  ctx.beginPath();
+  ctx.moveTo(x - width / 2, baseY);
+  ctx.quadraticCurveTo(x - width * 0.6, baseY - height * 0.5, x, baseY - height);
+  ctx.quadraticCurveTo(x + width * 0.6, baseY - height * 0.5, x + width / 2, baseY);
+  ctx.closePath();
+  ctx.fill();
+}
+
 export function render(ctx, w, view, now = 0) {
   const { canvas } = ctx;
   const W = canvas.width, H = canvas.height;
@@ -153,12 +189,6 @@ export function render(ctx, w, view, now = 0) {
   }
   const ppx = view.px * TILE, ppy = view.py * TILE;
   add(view.px, view.py, () => {
-    if (w.player.aura > 0 && view.charging) {
-      ctx.strokeStyle = C.aura;
-      ctx.globalAlpha = 0.25 + 0.5 * (w.player.aura / w.player.maxAura);
-      ctx.beginPath(); ctx.arc(ppx + TILE / 2, ppy + TILE / 2, TILE * 0.8, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
     if (view.dodging) ctx.globalAlpha = 0.45;
     const key = view.charging ? 'charge' : `${view.facing === 'left' || view.facing === 'right' ? 'side' : view.facing}-${view.walkFrame}`;
     const def = PLAYER_SPRITES[key] || PLAYER_SPRITES['down-0'];
@@ -171,6 +201,8 @@ export function render(ctx, w, view, now = 0) {
     } else {
       drawPixelSprite(ctx, def, ppx, ppy, TILE);
     }
+    const auraAlpha = auraFlameAlpha(view, now);
+    if (auraAlpha > 0) drawAuraFlame(ctx, ppx + TILE / 2, ppy + TILE * 0.2, auraAlpha, now);
     ctx.globalAlpha = 1;
   });
 

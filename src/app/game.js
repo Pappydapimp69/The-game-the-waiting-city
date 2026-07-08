@@ -61,6 +61,10 @@ export function startGame(canvas, seed, options = {}, initialWorld = null) {
     guide: '', shakeX: 0, shakeY: 0, punch: {}, playerPunch: 0, night: 0,
     facing: 'down', walkFrame: 0, charging: false,
     projectiles: [],
+    // Charge-release aura flame fade (renderer.js): active while the flame
+    // eases out after the player stops charging, duration set per the
+    // aura-% held at release (see handleWorld's charge-transition below).
+    auraFadeActive: false, auraFadeStart: 0, auraFadeDuration: 0,
   };
   if (!initialWorld) {
     view.modal = mkDialog('THE WAITING CITY', CONTENT.arc.intro, 'continue');
@@ -144,6 +148,7 @@ export function startGame(canvas, seed, options = {}, initialWorld = null) {
         view.modal = mkModal('offer', 'Ferro', [], options);
         break;
       }
+      case 'enemy_incoming': toast(`${kindName(e.kind)} moves to block the road.`); audio.play('quest'); break;
       case 'enemy_appeared': toast(`${kindName(world.enemies[e.target]?.kind || e.kind)} takes position.`); break;
       case 'pickup_appeared': toast('Something glints nearby.'); break;
       case 'picked_up': toast(`Picked up ${prettify(e.item)}`); audio.play('pickup'); break;
@@ -297,6 +302,13 @@ export function startGame(canvas, seed, options = {}, initialWorld = null) {
     view.charging = chargeHeld;
     if (chargeHeld) {
       if (!wasCharging || now >= nextChargeAt) { dispatch({ type: 'CHARGE', start: !wasCharging }); nextChargeAt = now + CHARGE_TICK_MS; }
+    } else if (wasCharging) {
+      // Fade duration scales with the aura% held at release: below 80% a
+      // snappy 100ms; 80-100% eases from 200ms up to 500ms.
+      const pct = world.player.maxAura > 0 ? (world.player.aura * 100) / world.player.maxAura : 100;
+      view.auraFadeDuration = pct < 80 ? 100 : 200 + ((Math.min(pct, 100) - 80) / 20) * 300;
+      view.auraFadeStart = now;
+      view.auraFadeActive = true;
     }
     wasCharging = chargeHeld;
     if (presses.interact) {
@@ -378,6 +390,7 @@ export function startGame(canvas, seed, options = {}, initialWorld = null) {
     }
     view.playerPunch = Math.max(0, Math.min(1, (playerPunchUntil - now) / PLAYER_PUNCH_MS));
     view.night = nightAmount(world.tick);
+    if (view.auraFadeActive && now - view.auraFadeStart >= view.auraFadeDuration) view.auraFadeActive = false;
 
     input.setZones(render(ctx, ro, view, now));
     requestAnimationFrame(frame);

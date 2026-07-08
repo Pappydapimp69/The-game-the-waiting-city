@@ -210,6 +210,12 @@ export const CONTENT = {
       requires: ['city-of-rules'],
       objectives: [{ type: 'kill', target: 'sentry', n: 1 }],
       reward: { coins: 5 },
+      // Existence-gated (not present until this quest is accepted — see
+      // reduce.js ACCEPT_QUEST / world.js gatedEnemyIds) — sentry1 is the
+      // ONLY sentry in the region, so leaving it free-roam let a player kill
+      // it before ever accepting this quest, permanently soft-locking it
+      // (no other sentry ever spawns to satisfy the kill objective).
+      unlocks: { enemies: ['sentry1'] },
     },
     'watch-them-move': {
       name: 'Watch Them Move',
@@ -217,6 +223,8 @@ export const CONTENT = {
       requires: ['read-the-city'],
       objectives: [{ type: 'kill', target: 'cutthroat', n: 1 }],
       reward: { coins: 5 },
+      // Same soft-lock risk as read-the-city, same fix.
+      unlocks: { enemies: ['cutthroat1'] },
     },
     'ferros-ledger': {
       name: 'Ferro’s Ledger',
@@ -224,6 +232,10 @@ export const CONTENT = {
       requires: ['watch-them-move'],
       objectives: [{ type: 'collect', item: 'signet' }],
       reward: { coins: 5 },
+      // A free pickup is the collect-objective analog of the same bug: picked
+      // up before this quest is accepted, it's gone forever with nothing to
+      // re-collect. Gate it the same way.
+      unlocks: { pickups: ['signet1'] },
     },
     'the-wardens-seal': {
       name: 'The Warden’s Seal',
