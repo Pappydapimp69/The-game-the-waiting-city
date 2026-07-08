@@ -8,7 +8,10 @@
 import { makeRng } from './rng.js';
 import { CONTENT } from './content.js';
 
-export const WORLD_VERSION = 'waitingcity3';
+// Bumped when the confidence-gated perception system added `player.intel` —
+// an old save without it would throw on the first kill/hit; version-gating
+// (save.js) routes a mismatch cleanly to New Game instead of a crash.
+export const WORLD_VERSION = 'waitingcity3.1';
 
 export function makeWorld(seed, options = {}) {
   if (!Number.isInteger(seed)) throw new Error('makeWorld: seed must be an integer');
@@ -92,6 +95,11 @@ export function makeWorld(seed, options = {}) {
       coins: 0,
       skills,
       inventory: [],
+      // Per-enemy-kind encounter confidence (see content.js's confidenceGated
+      // doc comment): both winning AND losing against a kind add to its
+      // count — exposure to the kind is what's being measured, not the
+      // player's skill against it.
+      intel: {},
     },
     region: {
       id: CONTENT.startRegion,

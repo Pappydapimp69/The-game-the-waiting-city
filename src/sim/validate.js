@@ -34,6 +34,7 @@ export function validateContent(c) {
     if (!isInt(k.aggro) || k.aggro < 1) err(`enemyKind ${id}: bad aggro radius`);
     if (!isInt(k.leash) || k.leash < 1) err(`enemyKind ${id}: bad leash`);
     if (!isInt(k.patrolRadius) || k.patrolRadius < 0) err(`enemyKind ${id}: bad patrolRadius`);
+    if (k.confidenceGated !== undefined && typeof k.confidenceGated !== 'boolean') err(`enemyKind ${id}: confidenceGated must be a boolean if present`);
     if (k.immune !== undefined && k.immune !== 'melee' && k.immune !== 'aura') {
       err(`enemyKind ${id}: bad immune ${k.immune} (must be 'melee' or 'aura' if present)`);
     }

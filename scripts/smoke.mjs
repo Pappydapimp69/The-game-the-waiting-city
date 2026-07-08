@@ -22,7 +22,7 @@ import { describeObjective } from '../src/app/objective-text.js';
 import { bfsNextStep, stepAwayFrom } from '../src/sim/pathfind.js';
 import { hasLineOfSight } from '../src/sim/visibility.js';
 
-const GOLDEN_DEMO_FINGERPRINT = 'd099c9ea';
+const GOLDEN_DEMO_FINGERPRINT = '1ad83590';
 
 const failures = [];
 let count = 0;
@@ -96,7 +96,7 @@ test('shipped content passes every validation rung', () => {
 });
 test('deliberate content corruptions fail the build, not the player', () => {
   const corrupt = (mut) => { const c = structuredClone(CONTENT); mut(c); return validateContent(c).length > 0; };
-  assert(corrupt((c) => { c.enemyKinds.sentry.aiSenseReq = 1; }), 'aiSenseReq below senseReq passed');
+  assert(corrupt((c) => { c.enemyKinds.sentry.aiSenseReq = 0; }), 'aiSenseReq below senseReq passed');
   assert(corrupt((c) => { c.regions['lower-banks'].buildings.depot.w = 99; }), 'building footprint not fully in blocked passed');
   assert(corrupt((c) => { c.regions['lower-banks'].cars.car1.y = 5; }), 'car starting off-road passed');
   assert(corrupt((c) => { c.regions['lower-banks'].roads['2,2'] = 1; }), 'road tile overlapping a building tile passed');
@@ -274,12 +274,35 @@ test('a chasing enemy gives up and returns to post once it exceeds its leash', (
   reduce(w, { type: 'TICK' });
   assertEqual(w.enemies.testsentry.aiState, 'return', 'sentry kept chasing past its leash');
 });
-test('perception gates the AI-state readout at a higher threshold than hp/power', () => {
+test('confidence-gated kinds read off per-kind encounter count, not the perception stat', () => {
+  const seeker = makeWorld(1, { archetype: 'seeker' }); // perception 2, but sentry no longer cares
+  assert(!canSense(seeker.player, 'sentry'), 'zero encounters should not yet read sentry hp/power (senseReq 1)');
+  assert(!canReadIntent(seeker.player, 'sentry'), 'zero encounters should not yet read sentry intent (aiSenseReq 3)');
+  seeker.player.intel.sentry = 1;
+  assert(canSense(seeker.player, 'sentry'), 'intel 1 should read sentry hp/power (senseReq 1)');
+  assert(!canReadIntent(seeker.player, 'sentry'), 'intel 1 should NOT yet read sentry intent (aiSenseReq 3)');
+  seeker.player.skills.perception.lvl = 99;
+  assert(!canReadIntent(seeker.player, 'sentry'), 'raising the perception stat should not affect a confidence-gated kind');
+  seeker.player.intel.sentry = 3;
+  assert(canReadIntent(seeker.player, 'sentry'), 'intel 3 should read sentry intent (aiSenseReq 3)');
+});
+test('a loss builds confidence exactly like a win (exposure, not skill, is measured)', () => {
+  const w = makeWorld(1);
+  const e = makeTestEnemy(w, 'testsentry', 'sentry', w.player.x + 1, w.player.y);
+  assertEqual(w.player.intel.sentry || 0, 0, 'fresh world should have no sentry intel');
+  reduce(w, { type: 'ENEMY_STRIKE', enemyId: 'testsentry' });
+  assertEqual(w.player.intel.sentry, 1, 'losing an exchange to a sentry did not build intel on it');
+});
+test('the Warden stays on the flat perception-stat gate — a deliberate exception, not an oversight', () => {
   const seeker = makeWorld(1, { archetype: 'seeker' }); // perception 2
-  assert(canSense(seeker.player, 'sentry'), 'seeker (perception 2) should read sentry hp/power (senseReq 2)');
-  assert(!canReadIntent(seeker.player, 'sentry'), 'seeker (perception 2) should NOT yet read sentry intent (aiSenseReq 3)');
+  assert(!canSense(seeker.player, 'warden'), 'perception 2 should not yet read the Warden (senseReq 3)');
+  seeker.player.intel.warden = 99; // confidence accumulation must be irrelevant to the Warden
+  assert(!canSense(seeker.player, 'warden'), 'the Warden must ignore player.intel entirely');
   seeker.player.skills.perception.lvl = 3;
-  assert(canReadIntent(seeker.player, 'sentry'), 'perception 3 should read sentry intent');
+  assert(canSense(seeker.player, 'warden'), 'perception 3 should read the Warden (senseReq 3)');
+  assert(!canReadIntent(seeker.player, 'warden'), 'perception 3 should not yet read Warden intent (aiSenseReq 4)');
+  seeker.player.skills.perception.lvl = 4;
+  assert(canReadIntent(seeker.player, 'warden'), 'perception 4 should read Warden intent (aiSenseReq 4)');
 });
 
 console.log('# deterministic BFS pathfinding');

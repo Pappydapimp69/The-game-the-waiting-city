@@ -246,6 +246,7 @@ function reduceCore(state, command) {
       state.player.hp = Math.max(0, state.player.hp - dmg);
       const events = [{ type: 'player_hit', by: command.enemyId, dmg, hp: state.player.hp }];
       if (state.player.hp === 0) events.push({ type: 'player_defeated' });
+      gainIntel(state, e.kind);
       return events;
     }
 
@@ -300,8 +301,16 @@ function hitEnemy(state, id, e, dmg, kind) {
     state.player.coins += 2;
     events.push({ type: 'enemy_defeated', target: id, kind: e.kind });
     questProgress(state, events, 'kill', e.kind);
+    gainIntel(state, e.kind);
   }
   return events;
+}
+
+// A win against a kind adds to the player's encounter confidence for that
+// kind, same as a loss (see ENEMY_STRIKE) — exposure, not skill, is what's
+// being counted (see content.js's confidenceGated doc comment).
+function gainIntel(state, kind) {
+  state.player.intel[kind] = (state.player.intel[kind] || 0) + 1;
 }
 
 function gainXp(state, events, skillName) {

@@ -58,15 +58,28 @@ export const CONTENT = {
   // aggro: Chebyshev detection radius. leash: max Chebyshev distance from
   // `home` while chasing before giving up and returning to post. fleeAt/
   // resumeAt: HP percent thresholds (hysteresis) — only kinds that define
-  // fleeAt ever enter the flee state. aiSenseReq: perception level needed to
-  // read this kind's AI-state tell (patrol/chase/flee/etc); always >= senseReq
-  // (you learn to read a fight before you learn to read a mind).
+  // fleeAt ever enter the flee state.
+  //
+  // senseReq/aiSenseReq: the thresholds for reading this kind's hp/power,
+  // then its live AI-state tell. What they're compared AGAINST depends on
+  // confidenceGated: for a `confidenceGated: true` kind, it's
+  // `player.intel[kind]` — a per-kind counter that accumulates from real
+  // encounters with THAT kind specifically (both winning and losing add to
+  // it — see reduce.js's hitEnemy/ENEMY_STRIKE); for a kind WITHOUT the flag
+  // (just the Warden), it's the flat `player.skills.perception.lvl`, same as
+  // the two earlier games. The Warden is a deliberate exception, not an
+  // oversight: it's fought exactly once, so a meter meant to build across
+  // repeated separate encounters has nothing to accumulate from — forcing
+  // that framing onto a one-shot fight would be a rename of the existing
+  // boss-taunt event, not a real reading of anything the player did
+  // differently (this exact reasoning was researched and settled before
+  // building — see docs/STAGES.md Stage 0.2).
   enemyKinds: {
-    sentry: { name: 'Sentry', hp: 10, power: 2, senseReq: 2, aiSenseReq: 3, aggro: 5, leash: 7, patrolRadius: 3 },
-    bulwark: { name: 'Bulwark', hp: 12, power: 2, senseReq: 2, aiSenseReq: 3, immune: 'aura', aggro: 5, leash: 7, patrolRadius: 3 },
+    sentry: { name: 'Sentry', hp: 10, power: 2, senseReq: 1, aiSenseReq: 3, aggro: 5, leash: 7, patrolRadius: 3, confidenceGated: true },
+    bulwark: { name: 'Bulwark', hp: 12, power: 2, senseReq: 1, aiSenseReq: 3, immune: 'aura', aggro: 5, leash: 7, patrolRadius: 3, confidenceGated: true },
     cutthroat: {
-      name: 'Cutthroat', hp: 11, power: 3, senseReq: 2, aiSenseReq: 3, immune: 'melee',
-      aggro: 6, leash: 8, patrolRadius: 3, fleeAt: 30, resumeAt: 45,
+      name: 'Cutthroat', hp: 11, power: 3, senseReq: 1, aiSenseReq: 3, immune: 'melee',
+      aggro: 6, leash: 8, patrolRadius: 3, fleeAt: 30, resumeAt: 45, confidenceGated: true,
     },
     warden: { name: 'The Warden', hp: 44, power: 5, senseReq: 3, aiSenseReq: 4, aggro: 99, leash: 99, patrolRadius: 0 },
   },
