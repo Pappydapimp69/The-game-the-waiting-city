@@ -1,0 +1,10 @@
+{
+  "name": "the-game-the-waiting-city",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "The Waiting City — game 3 of the saga. Sequel to Wrong Sky; a tyrant-held city where enemies move and decide for the first time, framed as mundane in-world competence rather than an awakening machine. Vanilla JS + canvas, zero dependencies.",
+  "scripts": {
+    "smoke": "node scripts/smoke.mjs"
+  }
+}
